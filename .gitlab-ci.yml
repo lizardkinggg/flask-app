@@ -1,0 +1,37 @@
+variables:
+  GENERATED_IMG: ${CI_PROJECT_NAME}
+  PROJECT_HOST: app.sxvova.opensource-ukraine.org
+  REGISTRY_URL: gitlab.danjake.opensource-ukraine.org:5050
+  REGISTRY: ${REGISTRY_URL}/${CI_PROJECT_NAMESPACE}
+  DEV_PRIVATE_SSH_KEY: ${PR_SSH_KEY}
+  SMOKE_TEST_EXPECTED_STATUS_CODE: 200
+  SMOKE_TEST_HOST: https://app.sxvova.opensource-ukraine.org/
+  
+stages:
+  - build
+  - deploy
+  - smoke_test
+
+build-docker-image:
+  stage: build
+  script:
+    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN ${REGISTRY_URL}
+    - docker build -t ${REGISTRY}/${GENERATED_IMG}:$(echo $CI_COMMIT_SHA | cut -c -8 ) .
+    - docker push ${REGISTRY}/${GENERATED_IMG}:$(echo $CI_COMMIT_SHA | cut -c -8 )
+
+deploy:
+  stage: deploy
+  script:
+    - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )'
+    - eval $(ssh-agent -s)
+    - echo "$DEV_PRIVATE_SSH_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan ${PROJECT_HOST} >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    - ssh gitlab-runner@app.sxvova.opensource-ukraine.org "bash /opt/${CI_PROJECT_NAMESPACE}/image-changer.sh ${CI_PROJECT_NAMESPACE} ${CI_PROJECT_NAME} ${CI_COMMIT_SHA} ${CI_BUILD_TOKEN} ${REGISTRY_URL}"
+smoke_test:
+  stage: smoke_test
+  script:
+    - sleep 60
+    - "[[ $(curl -I $SMOKE_TEST_HOST 2>/dev/null | head -n 1 | cut -d$' ' -f2) == *$SMOKE_TEST_EXPECTED_STATUS_CODE* ]] || exit 1"

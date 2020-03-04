@@ -1,0 +1,7 @@
+version: '3'
+services:
+  sxvova:
+    image: gitlab.danjake.opensource-ukraine.org:5050/danjake/flask-app:latest
+    ports:
+      - "5000:5000"
+    restart: always
